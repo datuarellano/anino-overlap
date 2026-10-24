@@ -1,4 +1,5 @@
 import { HashRouter, Link, Route, Routes } from 'react-router-dom';
+import { ThemeSwitcher } from './components/ThemeSwitcher';
 import { isConfigured } from './lib/firebase';
 import { CreateEvent } from './pages/CreateEvent';
 import { EventPage } from './pages/EventPage';
@@ -27,9 +28,12 @@ export function App() {
       <div className="shell">
         <nav className="topbar">
           <Brand />
-          <Link to="/" className="btn btn-sm">
-            New event
-          </Link>
+          <div className="row" style={{ gap: 8 }}>
+            <ThemeSwitcher />
+            <Link to="/" className="btn btn-sm">
+              New event
+            </Link>
+          </div>
         </nav>
         {isConfigured ? (
           <Routes>

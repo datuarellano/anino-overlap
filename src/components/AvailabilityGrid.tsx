@@ -1,4 +1,4 @@
-import { useRef, useState, type PointerEvent } from 'react';
+import { useEffect, useRef, useState, type PointerEvent } from 'react';
 import type { Grid } from '../lib/slots';
 import { TimeGrid, cellAt } from './TimeGrid';
 
@@ -19,6 +19,10 @@ interface Drag {
 export function AvailabilityGrid({ grid, selected, onChange }: Props) {
   const [drag, setDrag] = useState<Drag | null>(null);
   const dragRef = useRef<Drag | null>(null);
+  const [popped, setPopped] = useState<Set<number>>(new Set());
+  const popTimer = useRef<number | undefined>(undefined);
+
+  useEffect(() => () => window.clearTimeout(popTimer.current), []);
 
   const update = (d: Drag | null) => {
     dragRef.current = d;
@@ -56,13 +60,21 @@ export function AvailabilityGrid({ grid, selected, onChange }: Props) {
     update(null);
     if (!commit) return;
     const next = new Set(selected);
+    const added = new Set<number>();
     for (let c = 0; c < grid.columns.length; c++) {
       for (let r = 0; r < grid.rows.length; r++) {
         const slot = grid.cells[c][r];
         if (slot === null || !inRect(d, c, r)) continue;
-        if (d.add) next.add(slot);
-        else next.delete(slot);
+        if (d.add) {
+          if (!next.has(slot)) added.add(slot);
+          next.add(slot);
+        } else next.delete(slot);
       }
+    }
+    if (added.size) {
+      setPopped(added);
+      window.clearTimeout(popTimer.current);
+      popTimer.current = window.setTimeout(() => setPopped(new Set()), 500);
     }
     onChange(next);
   };
@@ -79,7 +91,7 @@ export function AvailabilityGrid({ grid, selected, onChange }: Props) {
       cellClass={(slot, c, r) => {
         if (slot === null) return '';
         if (drag && inRect(drag, c, r)) return drag.add ? 'preview-add' : 'preview-remove';
-        return selected.has(slot) ? 'on' : '';
+        return selected.has(slot) ? (popped.has(slot) ? 'on pop' : 'on') : '';
       }}
     />
   );

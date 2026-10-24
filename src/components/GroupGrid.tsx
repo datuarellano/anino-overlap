@@ -12,10 +12,10 @@ interface Props {
   focus: Set<number> | null;
 }
 
+/** Maps a headcount onto the theme's five heat steps (--h0 … --h4). */
 export function heatColor(count: number, total: number): string {
-  if (!count || !total) return 'var(--cell-empty)';
-  const pct = Math.round(18 + (82 * count) / total);
-  return `color-mix(in srgb, var(--accent) ${pct}%, var(--cell-empty))`;
+  if (!count || !total) return 'var(--h0)';
+  return `var(--h${Math.max(1, Math.ceil((4 * count) / total))})`;
 }
 
 export function GroupGrid({ grid, counts, total, active, onActive, focus }: Props) {

@@ -7,6 +7,7 @@ import { SignIn } from '../components/SignIn';
 import { TimezoneSelect } from '../components/TimezoneSelect';
 import { getEvent, nameKey, saveSlots, subscribeParticipants } from '../lib/api';
 import { bestTimes } from '../lib/bestTimes';
+import { confetti } from '../lib/confetti';
 import { getSessionName, rememberEvent, setSessionName } from '../lib/session';
 import { buildGrid, eventSlots } from '../lib/slots';
 import { browserTimezone, formatDate, formatMinutes, localDateMin } from '../lib/time';
@@ -35,6 +36,8 @@ export function EventPage() {
   const [focusBlock, setFocusBlock] = useState<number | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
+  const [loaded, setLoaded] = useState(false);
+  const perfectRef = useRef<Set<number> | null>(null);
   const saveTimer = useRef<number | undefined>(undefined);
   const pending = useRef(false);
   const editVersion = useRef(0);
@@ -61,7 +64,10 @@ export function EventPage() {
 
   useEffect(() => {
     if (!event) return;
-    return subscribeParticipants(event.id, setPeople, (e) => {
+    return subscribeParticipants(event.id, (list) => {
+      setPeople(list);
+      setLoaded(true);
+    }, (e) => {
       console.error(e);
       setLoadError('Lost connection to live updates. Refresh to reconnect.');
     });
@@ -128,6 +134,20 @@ export function EventPage() {
     for (const p of effectivePeople) for (const s of p.slots) m.set(s, (m.get(s) ?? 0) + 1);
     return m;
   }, [effectivePeople]);
+
+  // Celebrate when a slot newly has everyone free (needs at least two people).
+  useEffect(() => {
+    if (!loaded) return;
+    const total = effectivePeople.length;
+    const perfect = new Set<number>();
+    if (total >= 2) for (const [slot, n] of counts) if (n === total) perfect.add(slot);
+    const prev = perfectRef.current;
+    perfectRef.current = perfect;
+    if (prev && [...perfect].some((s) => !prev.has(s))) {
+      confetti();
+      showToast('Perfect overlap! 🎉');
+    }
+  }, [counts, effectivePeople.length, loaded, showToast]);
 
   const blocks = useMemo(
     () => (event ? bestTimes(allSlots, event.slotMin, effectivePeople, 5) : []),
@@ -258,7 +278,7 @@ export function EventPage() {
                         : 'Synced'}
                 </span>
               </div>
-              <p className="hint">Tap or drag to mark when you're free. Start on a green slot to erase.</p>
+              <p className="hint">Tap or drag to mark when you're free. Start on a filled slot to erase.</p>
               {mySlots ? (
                 <AvailabilityGrid grid={grid} selected={mySlots} onChange={changeSlots} />
               ) : (
