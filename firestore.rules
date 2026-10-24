@@ -1,0 +1,84 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    match /events/{eventId} {
+      function validEvent(d) {
+        return d.keys().hasOnly(['title', 'timezone', 'dates', 'startMin', 'endMin', 'slotMin', 'creatorUid', 'createdAt'])
+          && d.title is string && d.title.size() > 0 && d.title.size() <= 120
+          && d.timezone is string && d.timezone.size() <= 64
+          && d.dates is list && d.dates.size() > 0 && d.dates.size() <= 62
+          && d.slotMin in [15, 30, 60]
+          && d.startMin is int && d.endMin is int
+          && d.startMin >= 0 && d.endMin <= 1440 && d.startMin < d.endMin;
+      }
+
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.creatorUid == request.auth.uid
+        && validEvent(request.resource.data);
+      allow update: if signedIn()
+        && resource.data.creatorUid == request.auth.uid
+        && request.resource.data.creatorUid == resource.data.creatorUid
+        && validEvent(request.resource.data);
+      allow delete: if signedIn() && resource.data.creatorUid == request.auth.uid;
+
+      function secretPath(key) {
+        return /databases/$(database)/documents/events/$(eventId)/secrets/$(key);
+      }
+      function claimPath(key) {
+        return /databases/$(database)/documents/events/$(eventId)/claims/$(key + '_' + request.auth.uid);
+      }
+      function participantPath(key) {
+        return /databases/$(database)/documents/events/$(eventId)/participants/$(key);
+      }
+
+      match /participants/{key} {
+        function validSlots(d) {
+          return d.slots is list && d.slots.size() <= 6000;
+        }
+
+        allow read: if signedIn();
+
+        // A new name must be created in the same batch as its secret and this browser's claim.
+        allow create: if signedIn()
+          && exists(/databases/$(database)/documents/events/$(eventId))
+          && request.resource.data.keys().hasOnly(['name', 'slots', 'updatedAt'])
+          && request.resource.data.name is string
+          && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 40
+          && request.resource.data.name.lower() == key
+          && validSlots(request.resource.data)
+          && existsAfter(secretPath(key))
+          && existsAfter(claimPath(key));
+
+        // Only browsers holding a verified claim may change their slots.
+        allow update: if signedIn()
+          && exists(claimPath(key))
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['slots', 'updatedAt'])
+          && validSlots(request.resource.data);
+      }
+
+      // Password hashes: write-once, never readable.
+      match /secrets/{key} {
+        allow create: if signedIn()
+          && request.resource.data.keys().hasOnly(['pwHash'])
+          && request.resource.data.pwHash is string
+          && !exists(participantPath(key))
+          && existsAfter(participantPath(key));
+      }
+
+      // A claim links this browser's anonymous uid to a name; it must present the right hash.
+      match /claims/{claimId} {
+        allow create, update: if signedIn()
+          && claimId.matches('.+_' + request.auth.uid)
+          && request.resource.data.keys().hasOnly(['pwHash'])
+          && request.resource.data.pwHash == getAfter(secretPath(claimId.replace('_' + request.auth.uid + '$', ''))).data.pwHash;
+      }
+    }
+  }
+}
