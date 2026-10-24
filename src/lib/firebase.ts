@@ -20,9 +20,14 @@ function init() {
   if (!app) {
     app = initializeApp(config);
     auth = getAuth(app);
-    // Safari (and some proxies) stall Firestore's streaming transport for many seconds
-    // before falling back; auto-detect switches to long polling quickly instead.
-    db = initializeFirestore(app, { experimentalAutoDetectLongPolling: true });
+    // Safari stalls Firestore's streaming transport for many seconds before falling back,
+    // so skip the probe there. Elsewhere auto-detect covers proxies that break streaming.
+    const ua = navigator.userAgent;
+    const safari = /^((?!chrome|android|crios|fxios|edg).)*safari/i.test(ua);
+    db = initializeFirestore(
+      app,
+      safari ? { experimentalForceLongPolling: true } : { experimentalAutoDetectLongPolling: true },
+    );
   }
 }
 
@@ -60,4 +65,9 @@ export function ensureUser(): Promise<User> {
     });
   }
   return userPromise;
+}
+
+/** Warm up auth and the Firestore connection while the user is still typing. */
+export function preconnect(): void {
+  if (isConfigured) ensureUser().catch(() => {});
 }
