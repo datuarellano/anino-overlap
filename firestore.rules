@@ -18,13 +18,16 @@ service cloud.firestore {
           && d.startMin >= 0 && d.endMin <= 1440 && d.startMin < d.endMin;
       }
 
-      allow read: if signedIn();
+      // get, not read: listing the collection would expose every event to any visitor.
+      allow get: if signedIn();
       allow create: if signedIn()
         && request.resource.data.creatorUid == request.auth.uid
+        && request.resource.data.createdAt == request.time
         && validEvent(request.resource.data);
       allow update: if signedIn()
         && resource.data.creatorUid == request.auth.uid
         && request.resource.data.creatorUid == resource.data.creatorUid
+        && request.resource.data.createdAt == resource.data.createdAt
         && validEvent(request.resource.data);
       allow delete: if signedIn() && resource.data.creatorUid == request.auth.uid;
 
@@ -52,6 +55,7 @@ service cloud.firestore {
           && request.resource.data.name is string
           && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 40
           && request.resource.data.name.lower() == key
+          && request.resource.data.updatedAt == request.time
           && validSlots(request.resource.data)
           && existsAfter(secretPath(key))
           && existsAfter(claimPath(key));
@@ -60,6 +64,7 @@ service cloud.firestore {
         allow update: if signedIn()
           && exists(claimPath(key))
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['slots', 'updatedAt'])
+          && request.resource.data.updatedAt == request.time
           && validSlots(request.resource.data);
       }
 
